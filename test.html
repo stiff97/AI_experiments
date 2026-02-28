@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Plane Anchor AR</title>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  </head>
+
+  <body style="margin: 0; overflow: hidden;">
+    <a-scene
+      vr-mode-ui="enabled: false"
+      renderer="logarithmicDepthBuffer: true;"
+      webxr="requiredFeatures: hit-test, local-floor"
+      xr-mode-ui="enabled: true"
+    >
+
+      <!-- Camera -->
+      <a-camera position="0 1.6 0"></a-camera>
+
+      <!-- Reticle (shows detected plane position) -->
+      <a-entity
+        id="reticle"
+        geometry="primitive: ring; radiusInner: 0.08; radiusOuter: 0.1;"
+        material="color: white; shader: flat;"
+        rotation="-90 0 0"
+        visible="false">
+      </a-entity>
+
+      <!-- Object to anchor -->
+      <a-box
+        id="anchored-object"
+        position="0 0 -2"
+        visible="false"
+        color="red">
+      </a-box>
+
+    </a-scene>
+
+    <script>
+      const scene = document.querySelector("a-scene");
+      const reticle = document.querySelector("#reticle");
+      const box = document.querySelector("#anchored-object");
+
+      scene.addEventListener("enter-vr", async () => {
+        const session = scene.renderer.xr.getSession();
+        const referenceSpace = await session.requestReferenceSpace("viewer");
+        const hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
+
+        scene.renderer.xr.addEventListener("sessionstart", () => {
+          scene.renderer.setAnimationLoop((timestamp, frame) => {
+            if (!frame) return;
+
+            const viewerSpace = scene.renderer.xr.getReferenceSpace();
+            const hitTestResults = frame.getHitTestResults(hitTestSource);
+
+            if (hitTestResults.length > 0) {
+              const hit = hitTestResults[0];
+              const pose = hit.getPose(viewerSpace);
+
+              reticle.object3D.visible = true;
+              reticle.object3D.position.set(
+                pose.transform.position.x,
+                pose.transform.position.y,
+                pose.transform.position.z
+              );
+            }
+          });
+        });
+
+        // Tap to place object
+        window.addEventListener("click", () => {
+          if (!reticle.object3D.visible) return;
+
+          box.object3D.position.copy(reticle.object3D.position);
+          box.object3D.visible = true;
+        });
+      });
+    </script>
+  </body>
+</html>
+What This Does
+Detects real-world horizontal planes using WebXR hit-test
+Shows a reticle when a surface is found
+On tap/click → anchors a 3D box to that plane
+Important Notes
+Requires HTTPS.
+Works on Android Chrome with WebXR enabled.
+iOS Safari does not support WebXR plane detection yet.
+If you're using marker-based AR.js instead, anchoring works differently (attached to marker entity).
+If you tell me:
+Are you using marker-based AR or plane detection?
+Are you building this for your urban AR perceptual interventions?
+I can tailor this specifically to your research context (e.g., anchoring moving image textures instead of boxes).
