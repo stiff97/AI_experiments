@@ -1,0 +1,28 @@
+<html>
+<head>
+  <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
+</head>
+
+<body>
+  <a-scene vr-mode-ui="enabled: false">
+
+    <a-assets>
+      <img id="image2" src="NoOnesPlace_002.jpg">
+    </a-assets>
+
+    <a-entity camera position="0 1.6 0"></a-entity>
+
+    <a-entity light="type: ambient; intensity: 1"></a-entity>
+
+    <a-image 
+      src="#image2"
+      material="shader: flat; blending: multiply; transparent: true; opacity: 0.85; depthWrite: false"
+      position="0 2 -8"
+      height="6"
+      width="12"
+      rotation="0 0 0">
+    </a-image>
+
+  </a-scene>
+</body>
+</html>
