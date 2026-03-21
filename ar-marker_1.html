@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>AR Marker Demo</title>
+
+  <!-- A-Frame -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.5.0/aframe.min.js"></script>
+
+  <!-- AR.js (supports iOS Safari + Android Chrome via WebRTC camera) -->
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Courier New', monospace;
+      background: #000;
+      overflow: hidden;
+    }
+
+    /* HUD overlay */
+    #hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 999;
+      pointer-events: none;
+    }
+
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      background: linear-gradient(180deg, rgba(0,0,0,0.75) 0%, transparent 100%);
+    }
+
+    .logo {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: #00ffcc;
+      text-transform: uppercase;
+    }
+
+    #status-dot {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      background: #ff4444;
+      box-shadow: 0 0 8px #ff4444;
+      animation: pulse 1.5s ease-in-out infinite;
+      display: inline-block;
+      margin-right: 7px;
+    }
+    #status-dot.found {
+      background: #00ffcc;
+      box-shadow: 0 0 10px #00ffcc;
+    }
+
+    #status-label {
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: #aaa;
+      text-transform: uppercase;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    /* Corner scan brackets */
+    #scan-frame {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 220px; height: 220px;
+      pointer-events: none;
+      z-index: 998;
+    }
+
+    .corner {
+      position: absolute;
+      width: 28px; height: 28px;
+      border-color: #00ffcc;
+      border-style: solid;
+      opacity: 0.85;
+    }
+    .corner.tl { top: 0; left: 0; border-width: 3px 0 0 3px; }
+    .corner.tr { top: 0; right: 0; border-width: 3px 3px 0 0; }
+    .corner.bl { bottom: 0; left: 0; border-width: 0 0 3px 3px; }
+    .corner.br { bottom: 0; right: 0; border-width: 0 3px 3px 0; }
+
+    /* Scan line animation */
+    #scan-line {
+      position: fixed;
+      left: calc(50% - 110px);
+      width: 220px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #00ffcc, transparent);
+      box-shadow: 0 0 8px #00ffcc;
+      animation: scan 2s ease-in-out infinite;
+      top: calc(50% - 110px);
+      z-index: 997;
+      pointer-events: none;
+    }
+
+    @keyframes scan {
+      0%   { transform: translateY(0px);   opacity: 1; }
+      100% { transform: translateY(220px); opacity: 0.3; }
+    }
+
+    /* Bottom info bar */
+    #bottom-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      padding: 14px 20px 28px;
+      background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+      z-index: 999;
+      pointer-events: none;
+      text-align: center;
+    }
+
+    #instruction {
+      font-size: 12px;
+      color: #888;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    #marker-link {
+      display: block;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #00ffcc;
+      letter-spacing: 1px;
+      text-decoration: none;
+      pointer-events: all;
+    }
+
+    /* Permission / error overlay */
+    #permission-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      text-align: center;
+      padding: 32px;
+    }
+    #permission-overlay.show { display: flex; }
+
+    #permission-overlay h2 {
+      color: #00ffcc;
+      font-size: 18px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+    #permission-overlay p {
+      color: #888;
+      font-size: 13px;
+      line-height: 1.7;
+      max-width: 300px;
+    }
+    #permission-overlay button {
+      margin-top: 8px;
+      padding: 12px 28px;
+      background: #00ffcc;
+      color: #000;
+      border: none;
+      font-family: 'Courier New', monospace;
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Permission / error overlay -->
+  <div id="permission-overlay">
+    <h2>Camera Required</h2>
+    <p>This AR experience needs camera access.<br>Please allow camera permission when prompted.</p>
+    <button onclick="document.getElementById('permission-overlay').classList.remove('show')">
+      Allow Camera
+    </button>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="header">
+      <span class="logo">AR·JS</span>
+      <span>
+        <span id="status-dot"></span>
+        <span id="status-label">Searching…</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- Scan brackets -->
+  <div id="scan-frame">
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+  </div>
+  <div id="scan-line"></div>
+
+  <!-- Bottom bar -->
+  <div id="bottom-bar">
+    <span id="instruction">Point camera at a Hiro marker</span>
+    <a id="marker-link"
+       href="https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/images/hiro.png"
+       target="_blank">
+      ↗ Download Hiro Marker
+    </a>
+  </div>
+
+  <!-- ─────────────── A-Frame AR Scene ─────────────── -->
+  <!--
+    arjs="trackingMethod: best;" picks the best method per device:
+      - iOS Safari  → uses WebRTC camera + JS marker detection
+      - Android Chrome → same, or WebXR if supported
+    detectionMode: mono_and_matrix enables both Hiro & custom matrix markers.
+    embedded: removes A-Frame's default fullscreen warning.
+  -->
+  <a-scene
+    embedded
+    arjs="sourceType: webcam;
+          trackingMethod: best;
+          detectionMode: mono_and_matrix;
+          matrixCodeType: 3x3;
+          debugUIEnabled: false;"
+    vr-mode-ui="enabled: false"
+    renderer="logarithmicDepthBuffer: true; antialias: true;"
+    loading-screen="dotsColor: #00ffcc; backgroundColor: black">
+
+    <!-- ── Assets ── -->
+    <a-assets>
+      <!-- Simple checkerboard texture for the box -->
+      <canvas id="checker-canvas" width="128" height="128"></canvas>
+    </a-assets>
+
+    <!-- ════════════════════════════════════
+         MARKER 1 — Hiro (classic AR.js marker)
+         Renders: animated spinning box + floating text
+    ════════════════════════════════════ -->
+    <a-marker preset="hiro" id="hiro-marker" smooth="true" smoothCount="5">
+
+      <!-- Spinning box with emissive glow -->
+      <a-box
+        id="ar-box"
+        position="0 0.5 0"
+        rotation="0 0 0"
+        scale="0.8 0.8 0.8"
+        material="color: #00ffcc; emissive: #003322; roughness: 0.2; metalness: 0.8;"
+        animation="property: rotation; to: 0 360 0; loop: true; dur: 3000; easing: linear">
+      </a-box>
+
+      <!-- Floating ring around box -->
+      <a-torus
+        position="0 0.5 0"
+        radius="0.7"
+        radius-tubular="0.03"
+        rotation="90 0 0"
+        material="color: #ff6ec7; emissive: #550033; roughness: 0.1; metalness: 0.9;"
+        animation="property: rotation; to: 90 360 0; loop: true; dur: 4000; easing: linear">
+      </a-torus>
+
+      <!-- Floating label -->
+      <a-text
+        value="HIRO MARKER"
+        align="center"
+        position="0 1.4 0"
+        scale="0.5 0.5 0.5"
+        color="#00ffcc"
+        font="https://cdn.aframe.io/fonts/Exo2Bold.fnt"
+        animation="property: position; from: 0 1.4 0; to: 0 1.6 0; loop: true; dur: 1500; dir: alternate; easing: easeInOutSine">
+      </a-text>
+
+      <!-- Ground plane indicator -->
+      <a-plane
+        rotation="-90 0 0"
+        width="1.5" height="1.5"
+        material="color: #00ffcc; opacity: 0.15; transparent: true; side: double;">
+      </a-plane>
+
+    </a-marker>
+
+    <!-- ════════════════════════════════════
+         MARKER 2 — Kanji (another preset)
+         Renders: animated sphere + particles
+    ════════════════════════════════════ -->
+    <a-marker preset="kanji" smooth="true" smoothCount="5">
+
+      <!-- Pulsing sphere -->
+      <a-sphere
+        position="0 0.6 0"
+        radius="0.45"
+        material="color: #ff6ec7; emissive: #220011; roughness: 0.1; metalness: 0.9; wireframe: false;"
+        animation__scale="property: scale; from: 1 1 1; to: 1.2 1.2 1.2; loop: true; dur: 900; dir: alternate; easing: easeInOutSine"
+        animation__rot="property: rotation; to: 360 360 0; loop: true; dur: 5000; easing: linear">
+      </a-sphere>
+
+      <!-- Orbit ring -->
+      <a-torus
+        position="0 0.6 0"
+        radius="0.75"
+        radius-tubular="0.025"
+        rotation="60 0 0"
+        material="color: #00ffcc; opacity: 0.7; transparent: true;"
+        animation="property: rotation; from: 60 0 0; to: 60 360 0; loop: true; dur: 3500; easing: linear">
+      </a-torus>
+
+      <a-text
+        value="KANJI MARKER"
+        align="center"
+        position="0 1.4 0"
+        scale="0.5 0.5 0.5"
+        color="#ff6ec7"
+        font="https://cdn.aframe.io/fonts/Exo2Bold.fnt"
+        animation="property: position; from: 0 1.4 0; to: 0 1.6 0; loop: true; dur: 1500; dir: alternate; easing: easeInOutSine">
+      </a-text>
+
+    </a-marker>
+
+    <!-- ════════════════════════════════════
+         Camera entity (required by AR.js)
+    ════════════════════════════════════ -->
+    <a-entity camera></a-entity>
+
+  </a-scene>
+
+  <!-- ─────────────── JS Logic ─────────────── -->
+  <script>
+    /* ── Checkerboard canvas texture ── */
+    (function () {
+      const c = document.getElementById('checker-canvas');
+      const ctx = c.getContext('2d');
+      const size = 16;
+      for (let y = 0; y < c.height; y += size) {
+        for (let x = 0; x < c.width; x += size) {
+          ctx.fillStyle = ((x / size + y / size) % 2 === 0) ? '#00ffcc' : '#001a14';
+          ctx.fillRect(x, y, size, size);
+        }
+      }
+    })();
+
+    /* ── Status HUD updates ── */
+    const dot   = document.getElementById('status-dot');
+    const label = document.getElementById('status-label');
+    const instr = document.getElementById('instruction');
+
+    const markers = document.querySelectorAll('a-marker');
+    let anyFound = false;
+
+    markers.forEach(marker => {
+      marker.addEventListener('markerFound', () => {
+        anyFound = true;
+        dot.classList.add('found');
+        label.textContent = 'Marker detected';
+        instr.textContent  = 'Marker locked ✓';
+      });
+      marker.addEventListener('markerLost', () => {
+        // only reset if NO markers remain visible
+        anyFound = [...markers].some(m => m.object3D.visible);
+        if (!anyFound) {
+          dot.classList.remove('found');
+          label.textContent = 'Searching…';
+          instr.textContent  = 'Point camera at a Hiro or Kanji marker';
+        }
+      });
+    });
+
+    /* ── iOS permission hint ── */
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIOS) {
+      // Show overlay briefly to remind user camera permission is needed
+      const overlay = document.getElementById('permission-overlay');
+      overlay.classList.add('show');
+      setTimeout(() => overlay.classList.remove('show'), 4000);
+    }
+
+    /* ── Catch WebRTC/camera errors ── */
+    window.addEventListener('camera-error', (e) => {
+      document.getElementById('permission-overlay').classList.add('show');
+    });
+  </script>
+
+</body>
+</html>
